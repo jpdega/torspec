@@ -2,10 +2,8 @@ Filename: 308-counter-galois-onion.txt
 Title: Counter Galois Onion: A New Proposal for Forward-Secure Relay Cryptography
 Authors: Jean Paul Degabriele, Alessandro Melloni, Martijn Stam
 Created: 13 Sep 2019
-Last-Modified: 13 Sep 2019
+Last-Modified: 1 Nov 2019
 Status: Draft
-
-
 
 1. Background and Motivation
 
@@ -18,18 +16,18 @@ Status: Draft
     analysed in [DS18]. An alternative scheme was suggested in Proposal 295
     which combines an instantiation of the PIV construction from [ST14] and
     a variant of the GCM-RUP construction from [ADL17]. In this document we
-    propose yet another scheme, Counter Galois Onion (CGO)
-    which improves over proposals 261 and 295 in a number of ways. CGO has
-    a minimalistic design requiring only a block cipher in counter-mode and
-    a universal hash function. To take advantage of Intel's AES-NI and
-    PCLMULQDQ instructions we recommend using AES and POLYVAL [GLL18]. In
-    terms of security, it protects against tagging attacks while
-    simultaneously providing forward security with respect to end-to-end
-    authenticity and confidentiality. Furthermore CGO performs better than
-    proposal 295 in terms of efficiency and its support of "leaky pipes".
+    propose yet another scheme, Counter Galois Onion (CGO) which improves
+    over proposals 261 and 295 in a number of ways. CGO has a minimalistic
+    design requiring only a block cipher in counter-mode and a universal hash
+    function. To take advantage of Intel's AES-NI and PCLMULQDQ instructions
+    we recommend using AES and POLYVAL [GLL18]. In terms of security, it
+    protects against tagging attacks while simultaneously providing forward
+    security with respect to end-to-end authenticity and confidentiality.
+    Furthermore CGO performs better than proposal 295 in terms of efficiency
+    and its support of "leaky pipes".
 
 
-1.2 Design Overview
+1.1 Design Overview
 
     CGO makes due with a universal hash function while simultaneously
     satisfying forward security. It employs two distinct types of
@@ -38,14 +36,19 @@ Status: Draft
     is used for the intermediate layers (n-1 to 1). DEnc is a Forward-
     Secure Authenticated Encryption scheme for securing end-to-end
     communication and SEnc provides the non-malleability for protecting
-    against tagging attacks. In order to provide forward security, the key
+    against tagging attacks. SEnc is based on a stateful variant of
+    GCM-RUP [ADL17] that in addition borrows and refines on ideas from
+    proposal 261. In order to provide forward security, the key
     material in DEnc is updated with every encryption whereas in SEnc the
     key material is static. To support leaky pipes, in the forward
     direction each OR first attempts a partial decryption using DEnc and
-    if it fails it reverts to decrypting using SEnc. The rest of the
-    document describes the scheme's operation in terms of the low-level
-    primitives and we make no further mention of DEnc and SEnc. However,
-    on an intuitive level it can be helpful to think of:
+    if it fails it reverts to decrypting using SEnc. Central to the
+    design of CGO is the close compatibility between DEnc and SEnc,
+    that allows for an efficient leaky-pipe strategy and the transfer
+    of their individual security properties to the aggregate scheme.
+    The rest of the document describes the scheme's operation in terms of
+    the low-level primitives and we make no further mention of DEnc and
+    SEnc. However, on an intuitive level it can be helpful to think of:
 
     a) the combinations of E(KSf_I, *) and PH(HSf_I, *) as well as
     E(KDf_I, *) and PH(HDf_I, *) as two instances of a tweakable block
@@ -57,42 +60,104 @@ Status: Draft
     c) and E(JSf_I, <IV>) | E(JSf_I, <IV+1>) | ... | E(JSf_I, <IV+31>) as
     counter-mode encryption with <IV> as the initial vector.
 
+1.2 Relationship with Proposal 295
+
+    Like proposal 295, for the intermediate layers CGO is based on
+    GCM-RUP from [ADL17]. [ADL17] already discusses the use of GCM-RUP to
+    prevent tagging attacks in Tor. In its reasoning, [ADL17] abstractly
+    uses nonce-based encryption combined with a wide-tweak block cipher,
+    which [ADL17] suggest to instantiate with respectively counter mode and
+    a block cipher in tweakable XEX mode using an universal hash function.
+    It does not suggest how to incorporate state into the router's processing
+    to achieve channel security (let alone forward security). Nor does [ADL17]
+    indicate how to deal with leaky pipes and the slightly different setup of
+    the backwards direction.
+
+    Proposal 295 takes GCM-RUP as its core for the intermediate layers and
+    uses the output of the universal hash value as an additional piece of
+    associated data when processing the next cell on the same circuit. This
+    chaining is supposed to provide channel security; for comparison, a different
+    chaining was used in proposal 261, which uses (a truncation of)
+    the xor of message and ciphertext (resp. the value of the cell as input
+    xored with the value of the cell as output). In contrast, CGO uses the output
+    of the tweakable cipher as the chaining value to provide channel security.
+    At first sight, such a small change might appear not very significant, but
+    for symmetric modes of operation these details do matter: both for providing
+    actual security and for facilitating arguing about said security. In this
+    case, the choice in proposal 295 invalidates falling back on tweakable
+    block ciphers and hence the carefully crafted arguments outlined in [ADL17]
+    can no longer be formally linked easily to the security of proposal 295.
+    For CGO the abstraction is maintained, making the reliance on the results
+    presented in [ADL17] much stronger.
+
+    For its final layer (corresponding to the onion router where the cell terminates),
+    proposal 295 falls back on the PIV construction [ST13]. For the CGO construction,
+    forward security and no need for RUP security allows much closer alignment
+    with [ADL17].
+
+    The scheme CGO is not based directly on proposal 295. Rather, it is based on a
+    combination of SIV and proposal 295's forebearer [ADL17]. The primary security
+    goals for CGO are to prevent tagging attacks and to provide forward secure
+    end-to-end channels from the proxy to the exit router, allowing leaky pipes
+    and bidirectionality. A secondary security consideration is ease of abstraction
+    when providing security analysis. With those goals in mind, CGO has been
+    optimized for performance, which explains both the similarities between
+    proposal 295 and CGO, and the aforementioned differences, as well as minor
+    differences between Proposal 295 and CGO in the choice of universal hash
+    function.
+
+    To facilitate comparison between proposal 295 and CGO, we adhere to the
+    template laid out by proposal 295 for the sectioning, format, style, wording,
+    and notation used in this proposal. To ease integration in [tor-spec],
+    Proposal 295 itself---and by extension this proposal---structurally and
+    stylistically matches the Tor specification document [tor-spec] where
+    appropriate. Note that both proposals are intended to be direct replacements
+    or amendments to corresponding sections in [tor-spec].
+
+    Specifically, Sections 2.1, 2.2, and 2.3 of this document match the style and
+    format of Sections 0.1, 0.2, 0.3 in [tor-spec]. Sections 2.4 and 3 replace
+    Section 5.2.2 and Section 5.5 in [tor-spec], and Section 4 describes amendments
+    to Section 6 in [tor-spec].
 
 2. Preliminaries
 
 2.1. Notation
 
+2.1.1. Generic Notation
+
    Symbol               Meaning
    ------               -------
    M                    Plaintext
-   Sf_I                 PRG Seed, forward direction, layer I
-   Sb_I                 PRG Seed, backward direction, layer I
-   Cf_I                 Ciphertext, forward direction, layer I
-   Cb_I                 Ciphertext, backward direction, layer I
-   Tf_I                 Tag, forward direction, layer I
-   LTf_I                Last Tag, forward direction, layer I
-   Tb_I                 Tag, backward direction, layer I
-   LTb_I                Last Tag, backward direction, layer I
-   Nf_I                 Nonce, forward direction, layer I
-   LNf_I                Last Nonce, forward direction, layer I
-   Nb_I                 Nonce, backward direction, layer I
-   LNb_I                Last Nonce, backward direction, layer I
-   JSf_I                Static Block Cipher Key, forward direction, layer I
-   JSb_I                Static Block Cipher Key, backward direction, layer I
-   KSf_I                Static Block Cipher Key, forward direction, layer I
-   KSb_I                Static Block Cipher Key, backward direction, layer I
-   KDf_I                Dynamic Block Cipher Key, forward direction, layer I
-   KDb_I                Dynamic Block Cipher Key, backward direction, layer I
-   HSf_I                Static Poly-Hash Key, forward direction, layer I
-   HSb_I                Static Poly-Hash Key, backward direction, layer I
-   HDf_I                Dynamic Poly-Hash Key, forward direction, layer I
-   HDb_I                Dynamic Poly-Hash Key, backward direction, layer I
+   Z                    Encryption pad
    ^                    Bitwise XOR operator
    |                    Concatenation
    &&                   Logical AND  operator
-   Z[a, b]               For a string Z, the substring from byte a to byte b
+   X[a, b]              For a string X, the substring from byte a to byte b
                         (indexing starts at 1)
    INT(X)               Translate string X into an unsigned integer
+
+
+2.1.2. Notation Specific to Layer I
+
+   Symbol               Meaning
+   ------               -------
+   Cf_I                 Ciphertext, forward direction
+   Tf_I                 Tag, forward direction
+   LTf_I                Last Tag, forward direction
+   Nf_I                 Nonce, forward direction
+   LNf_I                Last Nonce, forward direction
+   Jf_I                 Block Cipher Key for CTR mode, forward direction
+   Kf_I                 Block Cipher Key for XEX mode, forward direction
+   Hf_I                 Poly-Hash Key, forward direction
+
+   Cb_I                 Ciphertext, backward direction
+   Tb_I                 Tag, backward direction
+   LTb_I                Last Tag, backward direction
+   Nb_I                 Nonce, backward direction
+   LNb_I                Last Nonce, backward direction
+   Jb_I                 Block Cipher Key for CTR mode, backward direction
+   Kb_I                 Block Cipher Key for XEX mode, backward direction
+   Hb_I                 Poly-Hash Key, backward direction
 
 2.2. Security parameters
 
@@ -121,7 +186,7 @@ Status: Draft
    j, we use <j> to denote the string of length BC_BLOCK_LEN representing
    that integer.
 
-2.4 Key derivation and initialisation (replaces Section 5.2.2)
+2.4 Key derivation and initialisation
 
    For newer KDF needs, Tor uses the key derivation function HKDF from
    RFC5869, instantiated with SHA256.  (This is due to a construction
@@ -143,60 +208,30 @@ Status: Draft
    When used in the ntor handshake, for each layer I, the key material is
    split into the following sequence of contiguous values:
 
-   Length             Purpose                    Notation
-   ------             -------                    --------
-   BC_KEY_LEN         forward Seed               Sf_I
-   BC_KEY_LEN         backward Seed              Sb_I
-
-   if (I < n) in addition derive the following static keys:
-
-   BC_KEY_LEN         forward BC Key             KSf_I
-   BC_KEY_LEN         backward BC Key            KSb_I
-   BC_KEY_LEN         forward CTR Key            JSf_I
-   BC_KEY_LEN         backward CTR Key           JSb_I
-   HASH_KEY_LEN       forward poly hash key      HSf_I
-   HASH_KEY_LEN       backward poly hash key     HSb_I
+   Length             Purpose                         Notation
+   ------             -------                         --------
+   BC_KEY_LEN         forward BC Key, XEX mode        Kf_I
+   BC_KEY_LEN         backward BC Key, XEX mode       Kb_I
+   BC_KEY_LEN         forward BC Key, CTR mode        Jf_I
+   BC_KEY_LEN         backward BC Key, CTR mode       Jb_I
+   HASH_KEY_LEN       forward poly hash key           Hf_I
+   HASH_KEY_LEN       backward poly hash key          Hb_I
+   BC_BLOCK_LEN       forward Nonce                   Nf_I
+   BC_BLOCK_LEN       backward Nonce                  Nb_I
 
    Excess bytes from K are discarded.
 
-2.4.2. Initialisation from Seed
 
-   For each layer I compute E(Sf_I, <0>) | E(Sf_I, <1>) |  E(Sf_I, <2>) | ...
-   and parse the output as:
+2.4.2. Fixed Initializations
 
-   Length             Purpose                    Notation
-   ------             -------                    --------
-   BC_BLOCK_LEN       forward Nonce              Nf_I
-   BC_KEY_LEN         forward BC Key             KDf_I
-   HASH_KEY_LEN       forward poly hash key      HDf_I
-   BC_KEY_LEN         new forward Seed           Sf'_I
-
-   Discard excess bytes, replace Sf_I with Sf'_I, and set LNf_n and LTf_I
-   to the zero string.
-
-   Similarly for the backward direction, compute E(Sb_I, <0>) | E(Sb_I, <1>)
-  | E(Sb_I, <2>) | ... and parse the output as:
-
-   Length             Purpose                    Notation
-   ------             -------                    --------
-   BC_BLOCK_LEN       backward Nonce             Nb_I
-   BC_KEY_LEN         forward BC Key             KDb_I
-   HASH_KEY_LEN       forward poly hash key      HDb_I
-   BC_KEY_LEN         new backward Seed          Sb'_I
-
-   Discard excess bytes, replace Sb_I with Sb'_I, and set LNb_n and LTb_I
-   to the zero string.
-
-   NOTE: For layers n-1 to 1 the values Nf_I, KDf_I, HDf_I, Sf_I and their
-   backward counterparts are only required in order to support leaky
-   pipes. If leaky pipes is not required these values can be safely
-   omitted.
+   For the forward direction, set LNf_I and LTf_I to the zero string.
+   Similarly for the backward direction, set LNb_n and LTb_I to the zero string.
 
 
 3. Routing relay cells
 
-   Let n denote the number of nodes in the circuit. Then encryption layer n
-   corresponds to the encryption between the OP and the exit/destination
+   Let n represent the destination node in the circuit. Then encryption
+   layer n corresponds to the encryption between the OP and the destination
    node.
 
 
@@ -216,10 +251,10 @@ Status: Draft
    Length             Purpose                    Notation
    ------             -------                    --------
    509                encryption pad             Z
-   BC_BLOCK_LEN       backward Nonce             Nf'_I
-   BC_KEY_LEN         forward BC Key             KDf'_I
-   HASH_KEY_LEN       forward poly hash key      HDf'_I
-   BC_KEY_LEN         new forward Seed           Sf'_I
+   BC_BLOCK_LEN       forward Nonce              Nf'_n
+   BC_KEY_LEN         forward BC Key             KDf'_n
+   HASH_KEY_LEN       forward poly hash key      HDf'_n
+   BC_KEY_LEN         new forward Seed           Sf'_n
 
    Excess bytes are discarded. It then computes the n'th layer ciphertext
    (Tf_n, Cf_n) as follows:
@@ -256,7 +291,7 @@ Status: Draft
 
 3.1.2. Relaying Forward at Onion Routers
 
-   When a forward relay cell (Tf_I, Cf_I) is received by OR I, it decrypts
+   When a forward relay cell (Tf_I, Cf_I) is received by OR I,
    it performs the following set of steps:
 
    'Forward' relay cell:
@@ -424,25 +459,6 @@ Status: Draft
    in the relay payload which contain real payload data. The
    remainder of the payload is padding bytes.
 
-4.2. Appending the encrypted nonce and dealing with version-homogenic
-     and version-heterogenic circuits
-
-   When a cell is prepared to be routed from the origin (see Section
-   3.1.1) the encrypted nonce N is appended to the encrypted cell
-   (occupying the last 16 bytes of the cell). If the cell is prepared to
-   be sent to a node supporting the new protocol, S is combined with other
-   sources to generate the layer's nonce. Otherwise, if the node only
-   supports the old protocol, n is still appended to the encrypted cell
-   (so that following nodes can still recover their nonce), but a
-   synchronized nonce (as per the old protocol) is used in CTR-mode.
-
-   When a cell is sent along the circuit in the 'backward' direction,
-   nodes supporting the new protocol always assume that the last 16 bytes
-   of the input are the nonce used by the previous node, which they
-   process as per Section 3.2.1. If the previous node also supports the
-   new protocol, these cells are indeed the nonce. If the previous node
-   only supports the old protocol, these bytes are either encrypted
-   padding bytes or encrypted data.
 
 5. Security and Design Rationale
 
@@ -471,9 +487,9 @@ Status: Draft
 5.2. End-to-end authenticated encryption
 
    Layer n provides end-to-end authenticated encryption. Similar to the
-   old protocol, this proposal only offers end-to-end authentication
-   rather than per-hop authentication. However, CGO provides 128-bit
-   authentication as opposed to the 32-bit authentication provided by the
+   old protocol and proposal 295, this proposal only offers end-to-end
+   authentication rather than per-hop authentication. However, CGO provides
+   128-bit authentication as opposed to the 32-bit authentication provided by the
    old protocol. A main observation underpinning the design of CGO is
    that the n'th layer does not need to be secure against the release of
    unverified plaintext (RUP). RUP security is only needed to protect
@@ -481,7 +497,6 @@ Status: Draft
    (but the layers below do). Consequently we employ a different scheme at
    the n'th layer which is designed to provide forward-secure
    authenticated encryption.
-
 
 5.3 Forward Security
 
@@ -512,9 +527,9 @@ Status: Draft
    it manages to achieve forward security with just a universal hash as
    opposed to other proposals which suggested the use of SHA2 or SHA3. In
    this respect we recommend using POLYVAL [GLL18], a variant of GHASH
-   that is more compatible with Intel's PCMULQDQ instruction. Furthermore
+   that is more compatible with Intel's PCLMULQDQ instruction. Furthermore
    CGO admits a certain degree of parallelisability. Supporting leaky
-   pipes requires an OR to first verify the cell using the the dynamic key
+   pipes requires an OR to first verify the cell using the dynamic key
    material and if the cell is unrecognised it goes on to process the cell
    with the static key material. The important thing to note (see for
    instance Section 3.1.2) is that the initial processing of the cell
@@ -523,7 +538,7 @@ Status: Draft
    independent of each other. As such, although in Section 3 these were
    described as being evaluated sequentially, they can in fact be computed
    in parallel. In particular the two polynomial hashes could be computed
-   in parallel by using the new vectorised VPCMULQDQ instruction.
+   in parallel by using the new vectorised VPCLMULQDQ instruction.
 
    We are currently looking into further optimisations of the scheme as
    presented here. One such optimisation is the possibility of removing
@@ -548,3 +563,6 @@ Misuse-Resistant Authenticated Encryption", RFC 8452, April 2019.
 
 [ST13] Thomas Shrimpton, R. Seth Terashima, "A Modular Framework for
 Building Variable-Input Length Tweakable Ciphers", ASIACRYPT 2013.
+
+[tor-dev] Roger Dingledine, Nick Mathewson, "Tor Protocol Specification",
+https://github.com/torproject/torspec/blob/master/tor-spec.txt.
